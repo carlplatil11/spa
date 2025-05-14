@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Confirmation - ShopVibe</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+    <link rel="preload" href="/assets/fonts/custom-icons.woff2" as="font" type="font/woff2" crossorigin>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+    <div class="ui container" style="padding: 3rem;"
+         x-data="{
+            order: null,
+            loading: true,
+            error: null,
+            pollingInterval: null,
+
+            startPolling() {
+                this.pollingInterval = setInterval(() => {
+                    this.fetchLastOrder();
+                }, 5000);
+            },
+
+            stopPolling() {
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                }
+            },
+
+            async fetchLastOrder() {
+                try {
+                    const response = await fetch('http://localhost:8006/api/payments/?latest=true');
+                    if (!response.ok) throw new Error('Failed to fetch order');
+                    const orders = await response.json();
+                    
+                    if (orders.length > 0) {
+                        const newOrder = orders[0];
+                        if (!this.order || newOrder.id !== this.order.id) {
+                            this.order = newOrder;
+                            this.showNotification();
+                        }
+                    }
+                } catch (error) {
+                    this.error = 'Error: ' + error.message;
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            showNotification() {
+                if (this.order && Notification.permission === 'granted') {
+                    new Notification('Order Updated!', {
+                        body: `Order #${this.order.id} has been updated`,
+                        icon: '/assets/icon.png'
+                    });
+                }
+            },
+
+            formatDate(dateString) {
+                return new Date(dateString).toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                });
+            },
+
+            formatCurrency(amount) {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD'
+                }).format(amount);
+            }
+         }"
+         x-init="fetchLastOrder(); startPolling()"
+         @unload.window="stopPolling">
+
+        <!-- Navigation -->
+        <div class="ui secondary pointing menu">
+            <a href="product_display.html" class="item">Browse Products</a>
+            <a href="cart.html" class="item">Cart</a>
+            <a href="order_list.html" class="item">Order History</a>
+            <a class="active item">Order Confirmation</a>
+        </div>
+
+        <div class="ui padded segment">
+            <h1 class="ui header">
+                <i class="check circle outline icon"></i>
+                Order Confirmation
+            </h1>
+
+            <!-- Loading State -->
+            <div class="ui active inverted dimmer" x-show="loading" x-cloak>
+                <div class="ui text loader">Fetching your order...</div>
+            </div>
+
+            <!-- Error Message -->
+            <div class="ui error message" x-show="error" x-cloak>
+                <i class="close icon" @click="error = null"></i>
+                <p x-text="error"></p>
+            </div>
+
+            <!-- Success Message -->
+            <div class="ui success message" 
+                 x-show="order && !loading"
+                 x-transition:enter="transition ease-out duration-500"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100">
+                <i class="check icon"></i>
+                <div class="content">
+                    <div class="header">Thank You for Your Order!</div>
+                    <p>Your purchase has been successfully confirmed.</p>
+                </div>
+            </div>
+
+            <!-- Real-time Update Indicator -->
+            <div class="ui teal message" x-show="!loading">
+                <i class="sync alternate icon"></i>
+                <div class="content">
+                    <div class="header">Live Order Tracking</div>
+                    <p>Order status updates will appear automatically.</p>
+                </div>
+            </div>
+
+            <!-- Order Details -->
+            <div class="ui segments" 
+                 x-show="order && !loading"
+                 x-transition:enter="transition ease-out duration-500"
+                 x-transition:enter-start="opacity-0 translate-y-4"
+                 x-transition:enter-end="opacity-100 translate-y-0">
+                
+                <!-- Order Summary -->
+                <div class="ui segment">
+                    <h3 class="ui header">
+                        <i class="shopping bag icon"></i>
+                        <div class="content">
+                            Order Details
+                            <div class="sub header" x-text="'Order #' + order.id"></div>
+                        </div>
+                    </h3>
+                </div>
+
+                <!-- Shipping Details -->
+                <div class="ui segment">
+                    <h4 class="ui header">Delivery Information</h4>
+                    <div class="ui relaxed divided list">
+                        <div class="item">
+                            <i class="user outline icon"></i>
+                            <div class="content">
+                                <strong>Name:</strong>
+                                <span x-text="order.name"></span>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <i class="envelope outline icon"></i>
+                            <div class="content">
+                                <strong>Email:</strong>
+                                <span x-text="order.email"></span>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <i class="map pin icon"></i>
+                            <div class="content">
+                                <strong>Address:</strong>
+                                <span x-text="order.address"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Information -->
+                <div class="ui segment">
+                    <h4 class="ui header">Payment Details</h4>
+                    <div class="ui relaxed divided list">
+                        <div class="item">
+                            <i class="credit card outline icon"></i>
+                            <div class="content">
+                                <strong>Method:</strong>
+                                <div class="ui label" 
+                                     :class="{
+                                         'teal': order.payment_method === 'paypal',
+                                         'green': order.payment_method === 'gcash',
+                                         'violet': order.payment_method === 'maya'
+                                     }"
+                                     x-text="order.payment_method.toUpperCase()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <i class="calendar outline icon"></i>
+                            <div class="content">
+                                <strong>Date:</strong>
+                                <span x-text="formatDate(order.created_at)"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ordered Items -->
+                <div class="ui segment">
+                    <h4 class="ui header">Items Purchased</h4>
+                    <div class="ui relaxed divided list">
+                        <template x-for="product in order.products" :key="product.id">
+                            <div class="item cart-item">
+                                <div class="ui grid">
+                                    <div class="four wide column">
+                                        <img :src="product.image_url || '/assets/placeholder.png'" 
+                                             :alt="product.name"
+                                             class="ui image product-image">
+                                    </div>
+                                    <div class="twelve wide column">
+                                        <div class="header" x-text="product.name"></div>
+                                        <div class="meta">
+                                            <span x-text="'Qty: ' + product.quantity"></span>
+                                            <span class="price" x-text="formatCurrency(product.price)"></span>
+                                        </div>
+                                        <div class="extra">
+                                            <strong x-text="'Subtotal: ' + formatCurrency(product.price * product.quantity)"></strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="ui secondary segment">
+                    <div class="ui two column grid">
+                        <div class="column">
+                            <div class="ui statistic">
+                                <div class="value" x-text="formatCurrency(order.total_amount)"></div>
+                                <div class="label">Order Total</div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="ui statistic">
+                                <div class="value">
+                                    <div class="ui label"
+                                         :class="{
+                                             'green': order.status === 'completed',
+                                             'orange': order.status === 'pending',
+                                             'red': order.status === 'failed'
+                                         }"
+                                         x-text="order.status.toUpperCase()">
+                                    </div>
+                                </div>
+                                <div class="label">Order Status</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="ui center aligned container" style="margin-top: 3rem;">
+                <a href="product_display.html" class="ui large teal button">
+                    <i class="shop icon"></i>
+                    Shop More
+                </a>
+                <a href="order_list.html" class="ui large basic button">
+                    <i class="list icon"></i>
+                    Order History
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .ui.container {
+            max-width: 1000px !important;
+            margin-top: 2rem;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            padding: 2rem !important;
+        }
+
+        .ui.secondary.pointing.menu {
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 2rem;
+        }
+
+        .ui.secondary.pointing.menu .item {
+            font-weight: 600;
+            color: #333;
+            transition: color 0.3s;
+        }
+
+        .ui.secondary.pointing.menu .active.item {
+            color: #00b4b4 !important;
+            border-color: #00b4b4 !important;
+        }
+
+        .ui.segment {
+            border-radius: 8px;
+        }
+
+        .cart-item {
+            padding: 1rem;
+            background: #fafafa;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .cart-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .product-image {
+            width: 80px !important;
+            height: 80px !important;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #eee;
+        }
+
+        .ui.list .item {
+            padding: 0.75rem 0;
+        }
+
+        .ui.label {
+            font-size: 0.9rem;
+            padding: 0.5em 0.8em;
+        }
+
+        .meta .price {
+            margin-left: 1.5rem;
+            color: #00b4b4;
+        }
+
+        .ui.statistic .value {
+            font-size: 1.8rem !important;
+        }
+
+        .ui.teal.button {
+            background-color: #00b4b4;
+            transition: background-color 0.3s;
+        }
+
+        .ui.teal.button:hover {
+            background-color: #008080;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        @keyframes pulse {
+            0% { background-color: #e6f7fa; }
+            100% { background-color: transparent; }
+        }
+
+        .highlight {
+            animation: pulse 1.5s ease-out;
+        }
+
+        @font-face {
+            font-family: 'CustomIcons';
+            font-display: swap;
+            src: url('/assets/fonts/custom-icons.woff2') format('woff2');
+        }
+
+        @media (max-width: 768px) {
+            .ui.container {
+                padding: 1rem !important;
+            }
+
+            .product-image {
+                width: 60px !important;
+                height: 60px !important;
+            }
+
+            .ui.statistic .value {
+                font-size: 1.5rem !important;
+            }
+
+            .ui.grid > .column {
+                padding: 0.5rem !important;
+            }
+        }
+    </style>
+
+    <script>
+        // Request notification permissions
+        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
